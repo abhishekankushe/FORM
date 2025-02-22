@@ -1,6 +1,4 @@
 require('dotenv').config();
-require('dotenv').config();
-
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -23,8 +21,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// MongoDB Connection
-mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
+// ✅ **Fixed MongoDB Connection**
+mongoose.connect(MONGO_URI)
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => {
         console.error("❌ MongoDB Connection Error:", err);
@@ -62,7 +60,7 @@ const User = mongoose.model('User', userSchema);
 // Search Users API (Optimized using $text search)
 app.get('/api/users/search', async (req, res) => {
     try {
-        const query = req.query.name?.trim(); // Updated to use req.query.name
+        const query = req.query.name?.trim();
         if (!query) return res.status(400).json({ error: "Name parameter is required" });
 
         const users = await User.find({ $text: { $search: query } });
@@ -76,21 +74,17 @@ app.get('/api/users/search', async (req, res) => {
 // Fetch All Users API
 app.get('/api/users', async (req, res) => {
     try {
-        const loggedInUserId = req.query.userId; // Get logged-in user ID from query params
-
-        if (!loggedInUserId) {
-            return res.status(400).json({ error: "User ID is required" });
+        let query = {};
+        if (req.query.userId) {
+            query = { _id: { $ne: req.query.userId } };
         }
-
-        const users = await User.find({ _id: { $ne: loggedInUserId } }); // Exclude logged-in user
+        const users = await User.find(query);
         res.status(200).json(users);
     } catch (err) {
         console.error("Error fetching users:", err);
         res.status(500).json({ error: "Failed to fetch users" });
     }
 });
-
-
 
 // Rating Schema
 const RatingSchema = new mongoose.Schema({
@@ -159,4 +153,4 @@ app.post('/api/users', upload.single('image'), async (req, res) => {
 });
 
 // Start Server
-app.listen(5000, () => console.log(`🚀 Server running on port ${5000}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
