@@ -21,12 +21,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ **Fixed MongoDB Connection**
+// ✅ **Fixed MongoDB Connection**\
+//   // Load .env variables
 
-
-mongoose.connect('mongodb://localhost:27017/yourDatabase')
+const mongoURI = process.env.MONGO_URI;
+mongoose.connect(mongoURI, { dbName: "SkillDB" }) // Explicitly set DB name
     .then(() => console.log("✅ MongoDB Connected"))
-    .catch(err => console.error(err));
+    .catch(err => console.error("❌ MongoDB Connection Error:", err));
+
 
 
 // Multer Configuration for File Uploads
