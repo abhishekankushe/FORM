@@ -5,6 +5,7 @@ const cors = require('cors');
 const path = require('path');
 const multer = require('multer');
 const Joi = require('joi');
+const morgan = require('morgan')
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -16,6 +17,7 @@ if (!MONGO_URI) {
 }
 
 // Middleware
+app.use(morgan('combined'));
 app.use(cors({ origin: "http://yourfrontend.com", credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -64,7 +66,7 @@ app.get('/api/users/search', async (req, res) => {
     try {
         const query = req.query.name?.trim(); // Use "q" as a general search parameter
         if (!query) return res.status(400).json({ error: "Search query parameter is required" });
-
+        console.log(query)
         const users = await User.find({
             $or: [
                 { name: { $regex: query, $options: "i" } }, // Case-insensitive search in "name"
