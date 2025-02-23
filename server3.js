@@ -22,12 +22,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // ✅ **Fixed MongoDB Connection**
-mongoose.connect(MONGO_URI)
+
+
+mongoose.connect('mongodb://localhost:27017/yourDatabase')
     .then(() => console.log("✅ MongoDB Connected"))
-    .catch(err => {
-        console.error("❌ MongoDB Connection Error:", err);
-        process.exit(1);
-    });
+    .catch(err => console.error(err));
+
 
 // Multer Configuration for File Uploads
 const storage = multer.diskStorage({
