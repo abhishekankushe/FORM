@@ -62,10 +62,16 @@ const User = mongoose.model('User', userSchema);
 // Search Users API (Optimized using $text search)
 app.get('/api/users/search', async (req, res) => {
     try {
-        const query = req.query.name?.trim();
-        if (!query) return res.status(400).json({ error: "Name parameter is required" });
+        const query = req.query.name?.trim(); // Use "q" as a general search parameter
+        if (!query) return res.status(400).json({ error: "Search query parameter is required" });
 
-        const users = await User.find({ $text: { $search: query } });
+        const users = await User.find({
+            $or: [
+                { name: { $regex: query, $options: "i" } }, // Case-insensitive search in "name"
+                { skills: { $regex: query, $options: "i" } } // Search inside the "skills" array
+            ]
+        });
+
         res.status(200).json(users);
     } catch (err) {
         console.error("Error searching users:", err);
