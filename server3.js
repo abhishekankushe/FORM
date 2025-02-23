@@ -56,7 +56,9 @@ const userSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true, unique: true },
     experience: { type: Number, required: true, min: 0 },
     skills: { type: [String], default: [] },
-    imageUrl: { type: String, default: '' }
+    imageUrl: { type: String, default: '' },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
 });
 userSchema.index({ name: "text", skills: "text" });
 const User = mongoose.model('User', userSchema);
@@ -161,6 +163,26 @@ app.post('/api/users', upload.single('image'), async (req, res) => {
         res.status(500).json({ error: "Failed to save user" });
     }
 });
+
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        if (!email, !password)
+            return res.status(400).json({ error: "Email and password are required" });
+        const response = await User.findOne({ email })
+        if (!response)
+            return res.status(401).json({ message: "Invalid email or password" });
+        const flag = (response.password === password)
+        if (flag) {
+            res.json(response);
+        }
+        else {
+            res.status(401).json({ message: "Invalid email or password" });
+        }
+    } catch (e) {
+        console.error(e)
+    }
+})
 
 // Start Server
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
