@@ -76,6 +76,7 @@ app.get('/api/users/search', async (req, res) => {
             ]
         });
 
+
         res.status(200).json(users);
     } catch (err) {
         console.error("Error searching users:", err);
