@@ -6,7 +6,7 @@ const path = require('path');
 const multer = require('multer');
 const http = require('http'); // For Socket.io
 const { Server } = require('socket.io');
-const axios = require("axios"); // Import Axios
+
 const app = express();
 const server = http.createServer(app); // Create HTTP Server
 const io = new Server(server, {
@@ -153,38 +153,6 @@ app.post('/api/users', upload.single('image'), async (req, res) => {
         res.status(500).json({ error: "Failed to save user" });
     }
 });
-
-
-
-//NEWS API
-
-
-// Fetch News from NewsAPI
-app.get("/news", async (req, res) => {
-    try {
-        const response = await axios.get("https://newsapi.org/v2/everything", {
-            params: {
-                q: "technology",
-                sortBy: "publishedAt",
-                language: "en",
-                pageSize: 6,
-                apiKey: process.env.NEWSAPI_KEY
-            }
-        });
-
-        res.json(response.data);
-    } catch (error) {
-        console.error("Error fetching news:", error.response?.data || error.message);
-        res.status(500).json({ error: "Failed to fetch news. Check your API key." });
-    }
-});
-
-
-
-
-
-
-
 
 // Start Server
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
