@@ -154,5 +154,35 @@ app.post('/api/users', upload.single('image'), async (req, res) => {
     }
 });
 
+const axios = require('axios'); // Import Axios
+
+const API_KEY = process.env.NEWSAPI_KEY; // News API Key
+
+if (!API_KEY) {
+    console.error("❌ ERROR: News API key is missing. Check your .env file!");
+    process.exit(1);
+}
+
+// 🔥 News API Route
+app.get('/news', async (req, res) => {
+    try {
+        const response = await axios.get("https://newsapi.org/v2/everything", {
+            params: {
+                q: "technology",
+                sortBy: "publishedAt",
+                language: "en",
+                pageSize: 20,
+                apiKey: API_KEY
+            }
+        });
+
+        res.json(response.data);
+    } catch (error) {
+        console.error("❌ Error fetching news:", error.response?.data || error.message);
+        res.status(500).json({ error: "Failed to fetch news. Check your API key." });
+    }
+});
+
+
 // Start Server
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
