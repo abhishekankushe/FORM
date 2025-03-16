@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .chat-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .user-list {
+            width: 30%;
+            border-right: 1px solid #ddd;
+            padding: 15px;
+            overflow-y: auto;
+        }
+
+        .chat-box {
+            width: 70%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #fff;
+            border-left: 1px solid #ddd;
+        }
+
+        .message {
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 10px;
+            max-width: 60%;
+        }
+
+        .sent {
+            background: #007bff;
+            color: white;
+            align-self: flex-end;
+        }
+
+        .received {
+            background: #e9ecef;
+            align-self: flex-start;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 10px;
+            background: #fff;
+            border-top: 1px solid #ddd;
+        }
+
+        .chat-input input {
+            flex: 1;
+            border-radius: 20px;
+            padding: 8px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container-fluid chat-container">
+        <!-- User List -->
+        <div class="user-list">
+            <h5>Users</h5>
+            <ul id="users" class="list-group"></ul>
+        </div>
+
+        <!-- Chat Box -->
+        <div class="chat-box">
+            <h5 id="chat-title" class="p-2 bg-light text-center">Select a user to chat</h5>
+            <div class="messages" id="messages"></div>
+            <div class="chat-input">
+                <input type="text" id="messageInput" class="form-control" placeholder="Type a message..."
+                    onkeypress="handleEnter(event)">
+                <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io("http://localhost:1010");
+        let currentUser = "";
+        let currentChatUser = null;
+        let messages = {};
+
+        // Prompt user until they enter a valid username
+        while (!currentUser) {
+            currentUser = prompt("Enter your username:").trim();
+        }
+
+        // Register user
+        socket.emit("register", currentUser);
+
+        // Fetch users and update list
+        socket.on("updateUsers", (users) => {
+            const usersList = document.getElementById("users");
+            usersList.innerHTML = "";
+            users.forEach(user => {
+                if (user !== currentUser) {
+                    const li = document.createElement("li");
+                    li.classList.add("list-group-item");
+                    li.textContent = user;
+                    li.onclick = () => startChat(user);
+                    usersList.appendChild(li);
+                }
+            });
+        });
+
+        // Start chat with a user
+        function startChat(user) {
+            currentChatUser = user;
+            document.getElementById("chat-title").textContent = `Chatting with: ${user}`;
+            document.getElementById("messages").innerHTML = messages[user] || "";
+        }
+
+        // Add message to chat
+        function addMessage(msg, isSent) {
+            const div = document.createElement("div");
+            div.classList.add("message", isSent ? "sent" : "received");
+            div.textContent = msg.message;
+            document.getElementById("messages").appendChild(div);
+
+            // Store messages in object for each user
+            messages[msg.sender || msg.receiver] = document.getElementById("messages").innerHTML;
+
+            // Auto-scroll
+            document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+        }
+
+        // Send message
+        function sendMessage() {
+            const input = document.getElementById("messageInput");
+            const message = input.value.trim();
+            if (!message || !currentChatUser) return;
+
+            const msgData = { sender: currentUser, receiver: currentChatUser, message };
+            socket.emit("private-message", msgData);
+            addMessage(msgData, true);
+            input.value = "";
+        }
+
+        // Handle Enter key for sending messages
+        function handleEnter(event) {
+            if (event.key === "Enter") {
+                sendMessage();
+            }
+        }
+
+        // Receive messages
+        socket.on("receive-message", (msg) => {
+            if (msg.sender === currentChatUser) {
+                addMessage(msg, false);
+            } else {
+                alert(`New message from ${msg.sender}`);
+            }
+        });
+
+    </script>
+
+</body>
+
+</html>

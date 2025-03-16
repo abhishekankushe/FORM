@@ -4,34 +4,32 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const multer = require('multer');
-const Joi = require('joi');
-const morgan = require('morgan')
-
+const http = require('http'); // For Socket.io
+const { Server } = require('socket.io');
+const axios = require("axios"); // Import Axios
 const app = express();
-const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI;
+const server = http.createServer(app); // Create HTTP Server
+const io = new Server(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+});
 
-if (!MONGO_URI) {
-    console.error("❌ MONGO_URI is missing in environment variables.");
-    process.exit(1);
-}
+console.log(process.env.MONGO_URI);
+const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(morgan('combined'));
-app.use(cors({ origin: "http://yourfrontend.com", credentials: true }));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ✅ **Fixed MongoDB Connection**\
-//   // Load .env variables
-
-const mongoURI = process.env.MONGO_URI;
-mongoose.connect(mongoURI, { dbName: "SkillDB" }) // Explicitly set DB name
+// MongoDB Connection
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
+mongoose.connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
     .then(() => console.log("✅ MongoDB Connected"))
     .catch(err => console.error("❌ MongoDB Connection Error:", err));
-
-
 
 // Multer Configuration for File Uploads
 const storage = multer.diskStorage({
@@ -48,142 +46,145 @@ const upload = multer({
         }
         cb(null, true);
     },
-    limits: { fileSize: 1024 * 1024 * 5 }
+    limits: { fileSize: 1024 * 1024 * 5 },
 });
 
-// User Schema
+// Define User Schema
 const userSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true, unique: true },
     experience: { type: Number, required: true, min: 0 },
     skills: { type: [String], default: [] },
-    imageUrl: { type: String, default: '' },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    imageUrl: { type: String, default: '' }
 });
 userSchema.index({ name: "text", skills: "text" });
 const User = mongoose.model('User', userSchema);
 
-// Search Users API (Optimized using $text search)
+// Chat Schema
+const chatSchema = new mongoose.Schema({
+    chatId: String,
+    sender: String,
+    message: String,
+    timestamp: { type: Date, default: Date.now }
+});
+const Chat = mongoose.model('Chat', chatSchema);
+
+// Real-Time Chat with Socket.io
+io.on('connection', (socket) => {
+    console.log(`🟢 User Connected: ${socket.id}`);
+
+    // Join a chat room
+    socket.on('joinChat', (chatId) => {
+        socket.join(chatId);
+        console.log(`User joined chat: ${chatId}`);
+    });
+
+    // Handle sending messages
+    socket.on('sendMessage', async (data) => {
+        const newMessage = new Chat(data);
+        await newMessage.save();
+        io.to(data.chatId).emit('receiveMessage', newMessage);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('🔴 User Disconnected');
+    });
+});
+
+// API to Fetch Chat Messages
+app.get('/chats/:chatId', async (req, res) => {
+    try {
+        const messages = await Chat.find({ chatId: req.params.chatId }).sort({ timestamp: 1 });
+        res.json(messages);
+    } catch (err) {
+        res.status(500).json({ error: "Failed to fetch messages" });
+    }
+});
+
+// API to Search Users by Name or Skills
 app.get('/api/users/search', async (req, res) => {
     try {
-        const query = req.query.name?.trim(); // Use "q" as a general search parameter
-        if (!query) return res.status(400).json({ error: "Search query parameter is required" });
-        console.log(query)
+        const query = req.query.query?.trim();
+        if (!query) return res.status(400).json({ error: "Query parameter is required" });
+
         const users = await User.find({
             $or: [
-                { name: { $regex: query, $options: "i" } }, // Case-insensitive search in "name"
-                { skills: { $regex: query, $options: "i" } } // Search inside the "skills" array
+                { name: { $regex: query, $options: "i" } },
+                { skills: { $elemMatch: { $regex: query, $options: "i" } } }
             ]
         });
 
-
         res.status(200).json(users);
     } catch (err) {
-        console.error("Error searching users:", err);
         res.status(500).json({ error: "Failed to fetch users" });
     }
 });
 
-// Fetch All Users API
+// API to Fetch All Users
 app.get('/api/users', async (req, res) => {
     try {
-        let query = {};
-        if (req.query.userId) {
-            query = { _id: { $ne: req.query.userId } };
-        }
-        const users = await User.find(query);
+        const users = await User.find();
         res.status(200).json(users);
     } catch (err) {
-        console.error("Error fetching users:", err);
         res.status(500).json({ error: "Failed to fetch users" });
     }
 });
 
-// Rating Schema
-const RatingSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    ratedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    rating: { type: Number, required: true, min: 1, max: 5 }
-});
-const Rating = mongoose.model("Rating", RatingSchema);
-
-// Rate a User
-app.post("/rate", async (req, res) => {
-    const { userId, ratedBy, rating } = req.body;
-    if (!userId || !ratedBy || !rating) {
-        return res.status(400).json({ message: "All fields are required" });
-    }
-    try {
-        const existingRating = await Rating.findOne({ userId, ratedBy });
-        if (existingRating) {
-            existingRating.rating = rating;
-            await existingRating.save();
-        } else {
-            await Rating.create({ userId, ratedBy, rating });
-        }
-        res.json({ message: "Rating submitted successfully!" });
-    } catch (err) {
-        res.status(500).json({ message: "Error submitting rating" });
-    }
-});
-
-// Get Average Rating of a User (Optimized with Aggregation)
-app.get("/rating/:userId", async (req, res) => {
-    try {
-        const result = await Rating.aggregate([
-            { $match: { userId: new mongoose.Types.ObjectId(req.params.userId) } },
-            { $group: { _id: "$userId", avgRating: { $avg: "$rating" }, total: { $sum: 1 } } }
-        ]);
-        res.json(result.length ? result[0] : { averageRating: 0, totalRatings: 0 });
-    } catch (err) {
-        res.status(500).json({ message: "Error fetching rating" });
-    }
-});
-
-// Add User API (Validation with Joi)
+// API to Add User (Handles File Uploads)
 app.post('/api/users', upload.single('image'), async (req, res) => {
     try {
-        const schema = Joi.object({
-            name: Joi.string().required(),
-            experience: Joi.number().min(0).required(),
-            skills: Joi.array().items(Joi.string()).default([])
-        });
-        const { error, value } = schema.validate(req.body);
-        if (error) return res.status(400).json({ error: error.details[0].message });
+        const { name, experience, skills } = req.body;
+        if (!name || !experience) {
+            return res.status(400).json({ error: "Name and experience are required" });
+        }
 
-        const { name, experience, skills } = value;
+        const parsedSkills = JSON.parse(skills || '[]');
         const imageUrl = req.file ? `/uploads/${req.file.filename}` : '';
-        const existingUser = await User.findOne({ name: new RegExp(`^${name}$`, "i") });
-        if (existingUser) return res.status(400).json({ error: "User already exists" });
 
-        const newUser = new User({ name, experience, skills, imageUrl });
+        const existingUser = await User.findOne({ name: new RegExp(`^${name}$`, "i") });
+        if (existingUser) {
+            return res.status(400).json({ error: "User already exists" });
+        }
+
+        const newUser = new User({ name, experience, skills: parsedSkills, imageUrl });
         await newUser.save();
+
         res.status(201).json({ message: "User added successfully!", user: newUser });
     } catch (err) {
-        console.error("Error saving user:", err);
         res.status(500).json({ error: "Failed to save user" });
     }
 });
 
-app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body;
+
+
+//NEWS API
+
+
+// Fetch News from NewsAPI
+app.get("/news", async (req, res) => {
     try {
-        if (!email, !password)
-            return res.status(400).json({ error: "Email and password are required" });
-        const response = await User.findOne({ email })
-        if (!response)
-            return res.status(401).json({ message: "Invalid email or password" });
-        const flag = (response.password === password)
-        if (flag) {
-            res.json(response);
-        }
-        else {
-            res.status(401).json({ message: "Invalid email or password" });
-        }
-    } catch (e) {
-        console.error(e)
+        const response = await axios.get("https://newsapi.org/v2/everything", {
+            params: {
+                q: "technology",
+                sortBy: "publishedAt",
+                language: "en",
+                pageSize: 6,
+                apiKey: process.env.NEWSAPI_KEY
+            }
+        });
+
+        res.json(response.data);
+    } catch (error) {
+        console.error("Error fetching news:", error.response?.data || error.message);
+        res.status(500).json({ error: "Failed to fetch news. Check your API key." });
     }
-})
+});
+
+
+
+
+
+
+
 
 // Start Server
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
